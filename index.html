@@ -1,0 +1,2103 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>محاكاة النسبية الجاليلية ثلاثية الأبعاد | Galilean Relativity 3D</title>
+
+  <!-- تحميل خطوط Cairo و Tajawal للواجهة العربية و JetBrains Mono للمعادلات الرياضية -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&family=Tajawal:wght@500;700&display=swap" rel="stylesheet" />
+
+  <!-- تحميل Tailwind CSS للتنسيق المرن المتجاوب -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- تحميل مكتبة Three.js r128 القياسية مع رابط احتياطي تلقائي لضمان التشغيل 100% -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    window.__threeFallbackPromise = new Promise(function (resolve) {
+      if (typeof window.THREE !== 'undefined') {
+        resolve(window.THREE);
+        return;
+      }
+      var fallbackScript = document.createElement('script');
+      fallbackScript.src = 'https://unpkg.com/three@0.128.0/build/three.min.js';
+      fallbackScript.onload = function () { resolve(window.THREE); };
+      fallbackScript.onerror = function () { resolve(null); };
+      document.head.appendChild(fallbackScript);
+    });
+  </script>
+
+  <style>
+    :root {
+      --font-ar: 'Cairo', 'Tajawal', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #060b16;
+      font-family: var(--font-ar);
+      color: #f1f5f9;
+      user-select: none;
+    }
+
+    /* التخطيط الرئيسي المرن (Flexbox) لفصل لوحة التحكم عن شاشة العرض تماماً */
+    #app-layout {
+      display: flex;
+      flex-direction: row;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* الشريط الجانبي للتحكم والمعادلات على اليمين */
+    #control-sidebar {
+      width: 345px;
+      flex-shrink: 0;
+      height: 100vh;
+      overflow-y: auto;
+      overflow-x: hidden;
+      background-color: #0f172a;
+      border-left: 1px solid #1e293b;
+      z-index: 20;
+      transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                  height 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                  padding 0.25s ease,
+                  opacity 0.2s ease;
+    }
+
+    /* حالة طي الشريط الجانبي على الشاشات الكبيرة */
+    #control-sidebar.collapsed {
+      width: 0 !important;
+      padding: 0 !important;
+      border-left: none;
+      overflow: hidden;
+      opacity: 0;
+    }
+
+    /* حاوية العرض ثلاثية الأبعاد تشغل كامل المساحة المتبقية */
+    #viewport-container {
+      flex: 1;
+      min-width: 0;
+      height: 100vh;
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(circle at center, #0c162c 0%, #050912 100%);
+      touch-action: none;
+    }
+
+    #viewport-container canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+    }
+
+    /* التجاوب الكامل مع الهواتف والشاشات الضيقة (أقل من 768px) */
+    @media (max-width: 768px) {
+      #app-layout {
+        flex-direction: column;
+      }
+
+      /* شاشة العرض في الأعلى */
+      #viewport-container {
+        order: 1;
+        width: 100vw;
+        height: 55vh;
+        flex: none;
+      }
+
+      /* لوحة التحكم في الأسفل */
+      #control-sidebar {
+        order: 2;
+        width: 100vw;
+        height: 45vh;
+        border-left: none;
+        border-top: 1px solid #1e293b;
+      }
+
+      #control-sidebar.collapsed {
+        width: 100vw !important;
+        height: 0 !important;
+        border-top: none;
+      }
+
+      #app-layout.sidebar-hidden #viewport-container {
+        height: 100vh;
+      }
+    }
+
+    /* تنسيق المعادلات والأرقام الرياضية من اليسار لليمين مع عرض أرقام ثابت */
+    .ltr-math {
+      direction: ltr;
+      unicode-bidi: isolate;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* بطاقات الأقسام داخل لوحة التحكم */
+    .sidebar-card {
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid #1e293b;
+      border-radius: 0.75rem;
+      padding: 0.75rem;
+    }
+
+    /* الشارات العائمة المسقطة فوق المشهد ثلاثي الأبعاد */
+    .projected-label {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      white-space: nowrap;
+      will-change: transform;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* حقول الإدخال الرقمية المباشرة للأرقام الكبيرة والعشرية */
+    .num-input {
+      direction: ltr;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      background-color: #020617;
+      border: 1px solid #334155;
+      color: #f8fafc;
+      border-radius: 0.5rem;
+      padding: 0.25rem 0.45rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      width: 6.6rem;
+      text-align: left;
+      outline: none;
+      user-select: text;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .num-input:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+    }
+
+    .num-input.gold-input:focus {
+      border-color: #fbbf24;
+      box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.25);
+    }
+
+    .num-input.rose-input:focus {
+      border-color: #f43f5e;
+      box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.25);
+    }
+
+    /* تخصيص أشرطة التمرير */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: #1e293b;
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #38bdf8;
+      border: 2px solid #0f172a;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.55);
+      cursor: pointer;
+      transition: transform 0.15s ease;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+
+    input[type="range"].gold-slider::-webkit-slider-thumb {
+      background: #fbbf24;
+      box-shadow: 0 0 8px rgba(251, 191, 36, 0.55);
+    }
+
+    input[type="range"].magenta-slider::-webkit-slider-thumb {
+      background: #f43f5e;
+      box-shadow: 0 0 8px rgba(244, 63, 94, 0.55);
+    }
+
+    /* شريط تمرير مخصص للشريط الجانبي */
+    #control-sidebar::-webkit-scrollbar {
+      width: 5px;
+    }
+    #control-sidebar::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    #control-sidebar::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app-layout">
+    <!-- 1. الشريط الجانبي للتحكم والمعادلات (على اليمين في واجهة RTL) -->
+    <aside id="control-sidebar" class="p-3.5 space-y-3">
+      <!-- ترويسة اللوحة -->
+      <div class="flex items-center justify-between pb-2 border-b border-slate-800 gap-2">
+        <div class="min-w-0">
+          <h1 class="text-sm font-extrabold text-white tracking-tight truncate">النسبية الجاليلية 3D</h1>
+          <p class="text-[11px] text-slate-400 truncate">تدعم الإحداثيات الكبيرة (10,000+ m)</p>
+        </div>
+        <span id="sidebar-time-badge" class="ltr-math text-[11px] font-bold px-2.5 py-1 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shrink-0">
+          t = 0.00 s
+        </span>
+      </div>
+
+      <!-- بطاقة نطاق القياس (Scale Multiplier) والتأطير الذكي للكاميرا -->
+      <div class="sidebar-card space-y-2.5 border-indigo-500/35 bg-indigo-950/20">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-extrabold text-indigo-200">نطاق القياس <span class="ltr-math text-[11px] text-indigo-300">(Scale)</span></span>
+          <span id="scale-range-hint" class="ltr-math text-[10px] text-slate-400">[-20, +20] m</span>
+        </div>
+
+        <div class="grid grid-cols-4 gap-1.5" id="scale-multiplier-group">
+          <button type="button" data-scale="1" class="scale-btn ltr-math rounded-lg py-1.5 text-xs font-extrabold bg-indigo-600 text-white border border-indigo-400 shadow transition active:scale-95">×1</button>
+          <button type="button" data-scale="100" class="scale-btn ltr-math rounded-lg py-1.5 text-xs font-bold bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700 transition active:scale-95">×100</button>
+          <button type="button" data-scale="1000" class="scale-btn ltr-math rounded-lg py-1.5 text-xs font-bold bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700 transition active:scale-95">×1,000</button>
+          <button type="button" data-scale="10000" class="scale-btn ltr-math rounded-lg py-1.5 text-xs font-bold bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700 transition active:scale-95">×10,000</button>
+        </div>
+
+        <!-- أزرار التأطير الذكي للكاميرا عند التعامل مع الأرقام الكبيرة -->
+        <div class="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-800/80">
+          <button id="sidebar-fit-all-btn" type="button" class="rounded-lg py-1.5 px-1.5 text-[11px] font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 border border-emerald-400/40 transition active:scale-95 text-center">
+            احتواء الكل
+          </button>
+          <button id="sidebar-focus-p-btn" type="button" class="rounded-lg py-1.5 px-1.5 text-[11px] font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 border border-rose-400/40 transition active:scale-95 text-center">
+            تتبع النقطة P
+          </button>
+          <button id="sidebar-origin-btn" type="button" class="rounded-lg py-1.5 px-1.5 text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600/60 transition active:scale-95 text-center">
+            العودة للأصل
+          </button>
+        </div>
+      </div>
+
+      <!-- قسم التحكم في الزمن ولحظة التطابق t = 0 -->
+      <div class="sidebar-card space-y-2.5">
+        <div class="flex items-center justify-between gap-2">
+          <label for="time-input" class="text-xs font-bold text-slate-200">الزمن <span class="ltr-math text-cyan-400">(t)</span></label>
+          <div class="flex items-center gap-1.5">
+            <input id="time-input" type="number" step="any" value="0" class="num-input" aria-label="قيمة الزمن بالثواني" />
+            <span class="ltr-math text-[11px] text-slate-400">s</span>
+          </div>
+        </div>
+
+        <input id="time-slider" type="range" min="-5.0" max="10.0" step="0.05" value="0.0" />
+        <div class="flex justify-between text-[10px] text-slate-400 ltr-math">
+          <span id="time-min-lbl">-5.0 s</span>
+          <span class="text-amber-400 font-bold">0.0 s (تطابق)</span>
+          <span id="time-max-lbl">+10.0 s</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 pt-1">
+          <button id="play-pause-btn" type="button" class="rounded-lg py-2 px-3 text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white shadow transition active:scale-95 flex items-center justify-center gap-1.5">
+            <svg id="play-icon" class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+            </svg>
+            <svg id="pause-icon" class="w-3.5 h-3.5 hidden" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M5.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75A.75.75 0 007.25 3h-1.5zM12.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75h-1.5z" />
+            </svg>
+            <span id="play-pause-text">تشغيل الزمن</span>
+          </button>
+
+          <button id="reset-coincidence-btn" type="button" class="rounded-lg py-2 px-3 text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-400/40 transition active:scale-95">
+            العودة للتطابق t=0
+          </button>
+        </div>
+      </div>
+
+      <!-- خيار وضع العرض الصافي (إخفاء الأرقام والإحداثيات) -->
+      <div class="sidebar-card flex items-center justify-between gap-2 border-emerald-500/30 bg-emerald-950/20">
+        <div class="space-y-0.5">
+          <div class="text-xs font-extrabold text-emerald-200">إخفاء الأرقام والإحداثيات</div>
+          <div class="text-[10px] text-slate-400">عرض الحدث الفيزيائي والمحاور بدون أرقام</div>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer shrink-0">
+          <input id="hide-numbers-cb" type="checkbox" class="sr-only peer" />
+          <div class="w-10 h-5 bg-slate-700 rounded-full peer peer-checked:bg-emerald-500 transition-colors after:content-[''] after:absolute after:top-0.5 after:right-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:-translate-x-5"></div>
+        </label>
+      </div>
+
+      <!-- تبديل منظور الراصد (S الثابت أو S' المتحرك) -->
+      <div class="sidebar-card space-y-2">
+        <div class="text-xs font-bold text-slate-200">منظور الراصد (إطار المراقبة)</div>
+        <div class="grid grid-cols-1 gap-1.5">
+          <button type="button" data-perspective="frameS" class="persp-btn rounded-lg px-3 py-2 text-xs font-bold text-right flex items-center justify-between bg-cyan-500/20 text-cyan-200 border border-cyan-400/50 transition">
+            <span>منظور الراصد الثابت <span class="ltr-math text-cyan-300">S</span></span>
+            <span class="text-[10px] text-cyan-300">مرجع O</span>
+          </button>
+          <button type="button" data-perspective="frameSp" class="persp-btn rounded-lg px-3 py-2 text-xs font-bold text-right flex items-center justify-between bg-slate-800/70 hover:bg-slate-800 text-slate-300 border border-slate-700 transition">
+            <span>منظور الراصد المتحرك <span class="ltr-math text-amber-300">S'</span></span>
+            <span class="text-[10px] text-amber-300">مرجع O'</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- سرعة الإطار المتحرك S' -->
+      <div class="sidebar-card space-y-2">
+        <div class="flex justify-between items-center text-xs gap-2">
+          <label for="frame-speed-input" class="font-bold text-slate-200">سرعة الإطار <span class="ltr-math text-amber-400">S' (v)</span></label>
+          <div class="flex items-center gap-1.5">
+            <input id="frame-speed-input" type="number" step="any" value="2" class="num-input gold-input" aria-label="سرعة الإطار المتحرك" />
+            <span class="ltr-math text-[10px] text-slate-400">m/s</span>
+          </div>
+        </div>
+        <input id="frame-speed-slider" class="gold-slider" type="range" min="-10.0" max="10.0" step="0.1" value="2.0" />
+        <div class="flex justify-between text-[10px] text-slate-400 ltr-math">
+          <span id="frame-speed-min-lbl">-10</span>
+          <span>0</span>
+          <span id="frame-speed-max-lbl">+10</span>
+        </div>
+      </div>
+
+      <!-- بطاقة مقارنة سرعة الجسم P بالنسبة لـ S و S' -->
+      <div class="sidebar-card space-y-2.5 border-cyan-500/30">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5">
+          <span class="text-xs font-extrabold text-white">سرعة الجسم <span class="ltr-math text-rose-400">P</span> في الإطارين</span>
+          <span class="text-[10px] text-slate-400">مقارنة لحظية</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div class="rounded-lg bg-sky-950/60 border border-sky-500/40 p-2 text-center space-y-0.5 min-w-0">
+            <div class="text-[10px] font-bold text-sky-300">بالنسبة لـ <span class="ltr-math">S</span></div>
+            <div id="card-ux-val" class="ltr-math text-xs font-extrabold text-sky-200 break-all">0.00 m/s</div>
+            <div id="card-ux-state" class="text-[10px] font-semibold text-sky-300/90">ساكن (uₓ = 0)</div>
+          </div>
+
+          <div class="rounded-lg bg-amber-950/60 border border-amber-500/40 p-2 text-center space-y-0.5 min-w-0">
+            <div class="text-[10px] font-bold text-amber-300">بالنسبة لـ <span class="ltr-math">S'</span></div>
+            <div id="card-uxp-val" class="ltr-math text-xs font-extrabold text-amber-200 break-all">-2.00 m/s</div>
+            <div id="card-uxp-state" class="text-[10px] font-semibold text-amber-300/90">متحرك يساراً</div>
+          </div>
+        </div>
+
+        <div class="bg-slate-950/80 border border-slate-800 rounded-lg p-2">
+          <div class="flex items-center justify-between text-[10px] text-slate-400 mb-0.5">
+            <span>قانون جمع السرعات الجاليلي:</span>
+            <span class="ltr-math font-bold text-rose-300">u'<sub>x</sub> = u<sub>x</sub> − v</span>
+          </div>
+          <div id="eq-ux-live" class="ltr-math text-[11px] text-slate-200 text-center pt-0.5 break-words">
+            u'<sub>x</sub> = 0.00 − (+2.00) = <span class="text-amber-300 font-bold">-2.00 m/s</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- التحكم في النقطة المرصودة P (الإدخال الرقمي المباشر + الأشرطة + السحب 3D) -->
+      <div class="sidebar-card space-y-2.5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5">
+          <span class="text-xs font-extrabold text-rose-300">النقطة المرصودة P</span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30">إدخال مباشر أو سحب 3D</span>
+        </div>
+
+        <!-- خيارات إظهار/إخفاء النقطة P ومتجهات السرعة -->
+        <div class="space-y-1.5">
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-200">
+            <input id="toggle-particle-cb" type="checkbox" checked class="w-4 h-4 rounded accent-rose-500 cursor-pointer" />
+            <span>إظهار النقطة <span class="ltr-math text-rose-400 font-bold">P</span> وخطوط الإسقاط</span>
+          </label>
+
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-200">
+            <input id="toggle-vel-vectors-cb" type="checkbox" checked class="w-4 h-4 rounded accent-cyan-500 cursor-pointer" />
+            <span>إظهار متجهات السرعة (<span class="ltr-math text-sky-400 font-bold">u<sub>x</sub></span> و <span class="ltr-math text-amber-400 font-bold">u'<sub>x</sub></span>)</span>
+          </label>
+        </div>
+
+        <!-- سرعة الجسم P بالنسبة لـ S وأزرار السكون السريعة -->
+        <div class="pt-2 border-t border-slate-800 space-y-2">
+          <div>
+            <div class="flex justify-between items-center text-[11px] mb-1 gap-2">
+              <label for="particle-speed-input" class="font-bold text-slate-200">سرعة <span class="ltr-math text-rose-400">P</span> في <span class="ltr-math text-sky-400">S (u<sub>x</sub>)</span></label>
+              <div class="flex items-center gap-1">
+                <input id="particle-speed-input" type="number" step="any" value="0" class="num-input" aria-label="سرعة النقطة بالنسبة لـ S" />
+                <span class="ltr-math text-[10px] text-slate-400">m/s</span>
+              </div>
+            </div>
+            <input id="particle-speed-slider" type="range" min="-10.0" max="10.0" step="0.1" value="0.0" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-1.5">
+            <button id="preset-rest-s-btn" type="button" class="rounded-lg py-1.5 px-2 text-[11px] font-bold bg-sky-500/15 hover:bg-sky-500/25 text-sky-200 border border-sky-400/40 transition active:scale-95 text-center">
+              ساكن في <span class="ltr-math">S (u<sub>x</sub>=0)</span>
+            </button>
+            <button id="preset-rest-sp-btn" type="button" class="rounded-lg py-1.5 px-2 text-[11px] font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-400/40 transition active:scale-95 text-center">
+              ساكن في <span class="ltr-math">S' (u<sub>x</sub>=v)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- إحداثيات الموقع الابتدائي والعمودي والجانبي للنقطة P -->
+        <div class="space-y-2.5 pt-2 border-t border-slate-800">
+          <div>
+            <div class="flex justify-between items-center text-[11px] mb-1 gap-2">
+              <label for="particle-x0-input" class="font-bold text-slate-300">الموقع الابتدائي <span class="ltr-math text-rose-300">X<sub>0</sub></span></label>
+              <div class="flex items-center gap-1">
+                <input id="particle-x0-input" type="number" step="any" value="3" class="num-input rose-input" aria-label="الموقع الابتدائي X0" />
+                <span class="ltr-math text-[10px] text-slate-400">m</span>
+              </div>
+            </div>
+            <input id="particle-x0-slider" class="magenta-slider" type="range" min="-20.0" max="20.0" step="0.1" value="3.0" />
+          </div>
+
+          <div>
+            <div class="flex justify-between items-center text-[11px] mb-1 gap-2">
+              <label for="particle-y-input" class="font-bold text-slate-300">الإحداثي العمودي <span class="ltr-math text-rose-300">Y</span></label>
+              <div class="flex items-center gap-1">
+                <input id="particle-y-input" type="number" step="any" value="2" class="num-input rose-input" aria-label="الإحداثي العمودي Y" />
+                <span class="ltr-math text-[10px] text-slate-400">m</span>
+              </div>
+            </div>
+            <input id="particle-y-slider" class="magenta-slider" type="range" min="-10.0" max="10.0" step="0.1" value="2.0" />
+          </div>
+
+          <div>
+            <div class="flex justify-between items-center text-[11px] mb-1 gap-2">
+              <label for="particle-z-input" class="font-bold text-slate-300">الإحداثي الجانبي <span class="ltr-math text-rose-300">Z</span></label>
+              <div class="flex items-center gap-1">
+                <input id="particle-z-input" type="number" step="any" value="1.5" class="num-input rose-input" aria-label="الإحداثي الجانبي Z" />
+                <span class="ltr-math text-[10px] text-slate-400">m</span>
+              </div>
+            </div>
+            <input id="particle-z-slider" class="magenta-slider" type="range" min="-10.0" max="10.0" step="0.1" value="1.5" />
+          </div>
+        </div>
+      </div>
+
+      <!-- بطاقة المعادلات اللحظية لتحويلات جاليليو -->
+      <div class="sidebar-card space-y-2">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 gap-2">
+          <span class="text-xs font-extrabold text-white">تحويلات جاليليو اللحظية</span>
+          <span class="ltr-math text-[10px] font-bold text-emerald-400 break-all" id="eq-dx-badge">Δx = 0.00 m</span>
+        </div>
+
+        <div class="bg-slate-950/75 border border-slate-800/90 rounded-lg p-2">
+          <div class="text-[10px] text-slate-400 mb-0.5">الإحداثي <span class="ltr-math text-sky-400">x</span> في الإطار الثابت <span class="ltr-math text-sky-400">S</span>:</div>
+          <div class="ltr-math text-xs font-bold text-sky-300">x = X<sub>0</sub> + u<sub>x</sub>·t</div>
+          <div id="eq-x-s-live" class="ltr-math text-[11px] text-slate-300 mt-0.5 break-words">
+            x = 3.00 + (0.00 × 0.00) = <span class="text-sky-400 font-bold">3.00 m</span>
+          </div>
+        </div>
+
+        <div class="bg-slate-950/75 border border-slate-800/90 rounded-lg p-2">
+          <div class="text-[10px] text-slate-400 mb-0.5">الإحداثي <span class="ltr-math text-amber-400">x'</span> في الإطار المتحرك <span class="ltr-math text-amber-400">S'</span>:</div>
+          <div class="ltr-math text-xs font-bold text-amber-300">x' = x − v·t</div>
+          <div id="eq-x-sp-live" class="ltr-math text-[11px] text-slate-300 mt-0.5 break-words">
+            x' = 3.00 − (2.00 × 0.00) = <span class="text-amber-400 font-bold">3.00 m</span>
+          </div>
+        </div>
+
+        <div class="bg-slate-950/75 border border-slate-800/90 rounded-lg p-2 flex flex-wrap items-center justify-between gap-1">
+          <span class="text-[10px] text-slate-400">الإحداثيات العمودية والزمن:</span>
+          <span id="eq-yz-live" class="ltr-math text-[10px] font-bold text-slate-200 break-all">y'=2.00 | z'=1.50 | t'=0.00s</span>
+        </div>
+      </div>
+
+      <!-- دليل الألوان -->
+      <div class="text-[11px] text-slate-400 bg-slate-950/60 border border-slate-800/80 rounded-lg p-2.5 space-y-1">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block shrink-0"></span>
+          <span><strong class="text-sky-300">الأزرق السماوي:</strong> الإطار الثابت <span class="ltr-math">S</span> وسرعة <span class="ltr-math">P</span> بالنسبة له (<span class="ltr-math">u<sub>x</sub></span>)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block shrink-0"></span>
+          <span><strong class="text-amber-300">الذهبي:</strong> الإطار المتحرك <span class="ltr-math">S'</span> وسرعة <span class="ltr-math">P</span> بالنسبة له (<span class="ltr-math">u'<sub>x</sub></span>)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block shrink-0"></span>
+          <span><strong class="text-emerald-300">الأخضر الزمردي:</strong> متجه الإزاحة <span class="ltr-math">Δx = v·t</span></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block shrink-0"></span>
+          <span><strong class="text-rose-300">الوردي المتوهج:</strong> الجسم المرصود <span class="ltr-math">P</span> (اسحبه للتحريك)</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 2. حاوية العرض ثلاثية الأبعاد (100% خالية من التداخل) -->
+    <main id="viewport-container">
+      <!-- طبقة الشارات العائمة المسقطة فوق عنصر Canvas -->
+      <div id="labels-overlay" class="absolute inset-0 z-10 pointer-events-none overflow-hidden">
+        <!-- علامات قياس ديناميكية على محور X -->
+        <div id="tick-lbl-0" class="projected-label ltr-math text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-950/75 text-sky-400/90 border border-sky-500/25"></div>
+        <div id="tick-lbl-1" class="projected-label ltr-math text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-950/75 text-sky-400/90 border border-sky-500/25"></div>
+        <div id="tick-lbl-2" class="projected-label ltr-math text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-950/75 text-sky-400/90 border border-sky-500/25"></div>
+        <div id="tick-lbl-3" class="projected-label ltr-math text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-950/75 text-sky-400/90 border border-sky-500/25"></div>
+        <div id="tick-lbl-4" class="projected-label ltr-math text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-950/75 text-sky-400/90 border border-sky-500/25"></div>
+        <div id="tick-lbl-5" class="projected-label ltr-math text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-950/75 text-sky-400/90 border border-sky-500/25"></div>
+        <div id="tick-lbl-6" class="projected-label ltr-math text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-950/75 text-sky-400/90 border border-sky-500/25"></div>
+
+        <!-- رموز الإطار الثابت S -->
+        <div id="lbl-S-O" class="projected-label ltr-math text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-950/85 text-sky-300 border border-sky-400/60 shadow">O (S)</div>
+        <div id="lbl-S-X" class="projected-label ltr-math text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-950/85 text-sky-300 border border-sky-400/60">X</div>
+        <div id="lbl-S-Y" class="projected-label ltr-math text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-950/85 text-sky-300 border border-sky-400/60">Y</div>
+        <div id="lbl-S-Z" class="projected-label ltr-math text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-950/85 text-sky-300 border border-sky-400/60">Z</div>
+
+        <!-- رموز الإطار المتحرك S' -->
+        <div id="lbl-Sp-O" class="projected-label ltr-math text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-950/85 text-amber-300 border border-amber-400/60 shadow">O' (S')</div>
+        <div id="lbl-Sp-X" class="projected-label ltr-math text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-950/85 text-amber-300 border border-amber-400/60">X'</div>
+        <div id="lbl-Sp-Y" class="projected-label ltr-math text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-950/85 text-amber-300 border border-amber-400/60">Y'</div>
+        <div id="lbl-Sp-Z" class="projected-label ltr-math text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-950/85 text-amber-300 border border-amber-400/60">Z'</div>
+        <div id="lbl-Sp-V" class="projected-label ltr-math text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-950/90 text-amber-200 border border-amber-400/60 shadow">v = +2.00 m/s</div>
+
+        <!-- شارة متجه الإزاحة Δx = v·t -->
+        <div id="lbl-disp" class="projected-label ltr-math text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-950/90 text-emerald-300 border border-emerald-400/60 shadow">Δx = v·t = 0.00 m</div>
+
+        <!-- شارة النقطة P -->
+        <div id="lbl-P" class="projected-label ltr-math text-[11px] font-bold px-2 py-0.5 rounded-md bg-rose-950/90 text-rose-200 border border-rose-400/70 shadow">P (3.00, 2.00, 1.50)</div>
+
+        <!-- شارتا السرعة المتتبعتان لمتجهي السرعة فوق وتحت النقطة P -->
+        <div id="lbl-vel-S" class="projected-label text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-sky-950/92 text-sky-200 border border-sky-400/75 shadow-lg">
+          ساكن بالنسبة لـ S (<span class="ltr-math">u<sub>x</sub> = 0</span>)
+        </div>
+        <div id="lbl-vel-Sp" class="projected-label text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-950/92 text-amber-200 border border-amber-400/75 shadow-lg">
+          سرعة P بالنسبة لـ S': <span class="ltr-math">u'<sub>x</sub> = -2.00 m/s</span>
+        </div>
+      </div>
+
+      <!-- شريط أدوات علوي أيسر: زر العرض الصافي + أزرار تأطير الكاميرا + شريط مقارنة السرعة -->
+      <div id="top-left-bar" class="absolute top-3 left-3 z-20 flex flex-wrap items-center gap-2 max-w-[calc(100%-10.5rem)]">
+        <button id="quick-clean-view-btn" type="button" title="إخفاء أو إظهار الأرقام والإحداثيات في شاشة العرض" class="rounded-full bg-slate-900/88 hover:bg-slate-800 text-slate-100 border border-slate-700/85 px-3 py-1.5 text-[11px] font-bold shadow-lg backdrop-blur-md transition active:scale-95 flex items-center gap-1.5">
+          <svg id="eye-off-icon" class="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+          </svg>
+          <svg id="eye-on-icon" class="w-3.5 h-3.5 text-cyan-400 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+          <span id="quick-clean-view-text">إخفاء الأرقام</span>
+        </button>
+
+        <!-- أزرار تأطير الكاميرا السريعة (احتواء الكل / تتبع P) -->
+        <div class="flex items-center gap-1 rounded-full bg-slate-900/88 border border-slate-700/85 p-0.5 shadow-lg backdrop-blur-md">
+          <button id="hud-fit-all-btn" type="button" title="ضبط الكاميرا لاحتواء O و O' و P مهما كبرت الإحداثيات" class="rounded-full px-2.5 py-1 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/20 transition active:scale-95">
+            احتواء الكل
+          </button>
+          <button id="hud-focus-p-btn" type="button" title="تتبع النقطة P عن قرب لفحص حركتها ومتجهات سرعتها" class="rounded-full px-2.5 py-1 text-[11px] font-bold text-rose-300 hover:bg-rose-500/20 transition active:scale-95">
+            تتبع P
+          </button>
+        </div>
+
+        <!-- شريط HUD مدمج لمقارنة سرعة الجسم P بالنسبة لـ S و S' -->
+        <div id="velocity-hud" class="pointer-events-none rounded-xl bg-slate-900/85 border border-slate-700/80 px-3 py-1.5 shadow-lg backdrop-blur-md flex items-center gap-3">
+          <div class="flex flex-col">
+            <span class="text-[10px] font-bold text-sky-300">سرعة P بالنسبة لـ <span class="ltr-math">S</span></span>
+            <span id="hud-ux" class="ltr-math text-xs font-extrabold text-sky-200">u<sub>x</sub> = 0.00 m/s</span>
+          </div>
+          <div class="h-7 w-px bg-slate-700/90"></div>
+          <div class="flex flex-col">
+            <span class="text-[10px] font-bold text-amber-300">سرعة P بالنسبة لـ <span class="ltr-math">S'</span></span>
+            <span id="hud-uxp" class="ltr-math text-xs font-extrabold text-amber-200">u'<sub>x</sub> = -2.00 m/s</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- زر إخفاء / إظهار لوحة التحكم في الزاوية العلوية اليمنى -->
+      <button id="toggle-sidebar-btn" type="button" class="absolute top-3 right-3 z-20 rounded-full bg-slate-900/88 hover:bg-slate-800 text-slate-100 border border-slate-700/80 px-3.5 py-1.5 text-xs font-bold shadow-lg backdrop-blur-md transition active:scale-95 flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+        <span id="toggle-sidebar-text">إخفاء لوحة التحكم</span>
+      </button>
+
+      <!-- شارة الحالة في الزاوية السفلية اليمنى توضح لحظة التطابق t = 0 -->
+      <div id="status-pill" class="absolute bottom-3 right-3 z-20 pointer-events-none rounded-full bg-slate-900/88 border border-amber-400/50 px-3 py-1 text-[11px] font-bold text-amber-200 shadow-lg backdrop-blur-md whitespace-nowrap">
+        تطابق ابتدائي: <span class="ltr-math">t = 0.00 s (O ≡ O')</span>
+      </div>
+
+      <!-- زر إعادة ضبط الكاميرا في الزاوية السفلية اليسرى -->
+      <button id="reset-camera-btn" type="button" class="absolute bottom-3 left-3 z-20 rounded-full bg-slate-900/88 hover:bg-slate-800 text-slate-200 border border-slate-700/80 px-3 py-1.5 text-[11px] font-bold shadow-lg backdrop-blur-md transition active:scale-95 flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+        <span>إعادة ضبط الكاميرا</span>
+      </button>
+
+      <!-- رسالة خطأ احتياطية عند تعذر WebGL -->
+      <div id="webgl-error" class="hidden absolute inset-0 z-30 flex items-center justify-center bg-slate-950/90 p-6">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm text-center">
+          <h2 class="text-base font-bold text-rose-400 mb-2">تعذر تشغيل الرسوميات ثلاثية الأبعاد</h2>
+          <p id="webgl-error-msg" class="text-xs text-slate-300">يرجى التأكد من تفعيل WebGL في المتصفح وإعادة المحاولة.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ============================================================================
+    // محاكاة النظرية النسبية الجاليلية ثلاثية الأبعاد — تدعم الأرقام والإحداثيات الكبيرة
+    // ============================================================================
+    (function () {
+      // الحالة الفيزيائية والتفاعلية للمحاكاة
+      const state = {
+        t: 0.0,                  // الزمن الحالي بالثواني (يبدأ عند t = 0 للتطابق)
+        v: 2.0,                  // سرعة الإطار المتحرك S' بالنسبة للإطار S (m/s)
+        x0: 3.0,                 // الموقع الابتدائي X0 للنقطة P في الإطار S عند t = 0 (m)
+        ux: 0.0,                 // سرعة النقطة P بالنسبة للإطار S (m/s)
+        py: 2.0,                 // الإحداثي العمودي Y للنقطة P (m)
+        pz: 1.5,                 // الإحداثي الجانبي Z للنقطة P (m)
+        scaleMultiplier: 1,      // مضاعف نطاق القياس (1 | 100 | 1000 | 10000)
+        showParticle: true,      // إظهار أو إخفاء النقطة P
+        showVelVectors: true,    // إظهار أو إخفاء متجهات السرعة u_x و u'_x
+        hideNumbers: false,      // وضع العرض الصافي (إخفاء جميع الأرقام والإحداثيات)
+        isPlaying: false,        // حالة تشغيل الزمن
+        perspective: 'frameS',   // 'frameS' (منظور S) | 'frameSp' (منظور S')
+        cameraTargetMode: 'observer', // 'observer' (يتتبع O أو O') | 'pointP' (يتتبع النقطة P عن قرب)
+        isDraggingP: false,      // حالة سحب النقطة P في الفضاء ثلاثي الأبعاد
+        isHoveringP: false       // حالة تمرير المؤشر فوق النقطة P
+      };
+
+      // مراجع عناصر واجهة المستخدم (DOM)
+      const dom = {
+        appLayout: document.getElementById('app-layout'),
+        sidebar: document.getElementById('control-sidebar'),
+        viewport: document.getElementById('viewport-container'),
+        toggleSidebarBtn: document.getElementById('toggle-sidebar-btn'),
+        toggleSidebarText: document.getElementById('toggle-sidebar-text'),
+        sidebarTimeBadge: document.getElementById('sidebar-time-badge'),
+        scaleBtns: document.querySelectorAll('.scale-btn'),
+        scaleRangeHint: document.getElementById('scale-range-hint'),
+        sidebarFitAllBtn: document.getElementById('sidebar-fit-all-btn'),
+        sidebarFocusPBtn: document.getElementById('sidebar-focus-p-btn'),
+        sidebarOriginBtn: document.getElementById('sidebar-origin-btn'),
+        hudFitAllBtn: document.getElementById('hud-fit-all-btn'),
+        hudFocusPBtn: document.getElementById('hud-focus-p-btn'),
+        timeInput: document.getElementById('time-input'),
+        timeSlider: document.getElementById('time-slider'),
+        timeMinLbl: document.getElementById('time-min-lbl'),
+        timeMaxLbl: document.getElementById('time-max-lbl'),
+        playPauseBtn: document.getElementById('play-pause-btn'),
+        playPauseText: document.getElementById('play-pause-text'),
+        playIcon: document.getElementById('play-icon'),
+        pauseIcon: document.getElementById('pause-icon'),
+        resetCoincidenceBtn: document.getElementById('reset-coincidence-btn'),
+        hideNumbersCb: document.getElementById('hide-numbers-cb'),
+        quickCleanViewBtn: document.getElementById('quick-clean-view-btn'),
+        quickCleanViewText: document.getElementById('quick-clean-view-text'),
+        eyeOffIcon: document.getElementById('eye-off-icon'),
+        eyeOnIcon: document.getElementById('eye-on-icon'),
+        perspBtns: document.querySelectorAll('.persp-btn'),
+        frameSpeedInput: document.getElementById('frame-speed-input'),
+        frameSpeedSlider: document.getElementById('frame-speed-slider'),
+        frameSpeedMinLbl: document.getElementById('frame-speed-min-lbl'),
+        frameSpeedMaxLbl: document.getElementById('frame-speed-max-lbl'),
+        cardUxVal: document.getElementById('card-ux-val'),
+        cardUxState: document.getElementById('card-ux-state'),
+        cardUxpVal: document.getElementById('card-uxp-val'),
+        cardUxpState: document.getElementById('card-uxp-state'),
+        eqUxLive: document.getElementById('eq-ux-live'),
+        toggleParticleCb: document.getElementById('toggle-particle-cb'),
+        toggleVelVectorsCb: document.getElementById('toggle-vel-vectors-cb'),
+        particleSpeedInput: document.getElementById('particle-speed-input'),
+        particleSpeedSlider: document.getElementById('particle-speed-slider'),
+        presetRestSBtn: document.getElementById('preset-rest-s-btn'),
+        presetRestSpBtn: document.getElementById('preset-rest-sp-btn'),
+        particleX0Input: document.getElementById('particle-x0-input'),
+        particleX0Slider: document.getElementById('particle-x0-slider'),
+        particleYInput: document.getElementById('particle-y-input'),
+        particleYSlider: document.getElementById('particle-y-slider'),
+        particleZInput: document.getElementById('particle-z-input'),
+        particleZSlider: document.getElementById('particle-z-slider'),
+        eqDxBadge: document.getElementById('eq-dx-badge'),
+        eqXSLine: document.getElementById('eq-x-s-live'),
+        eqXSpLine: document.getElementById('eq-x-sp-live'),
+        eqYzLive: document.getElementById('eq-yz-live'),
+        velocityHud: document.getElementById('velocity-hud'),
+        hudUx: document.getElementById('hud-ux'),
+        hudUxp: document.getElementById('hud-uxp'),
+        statusPill: document.getElementById('status-pill'),
+        resetCameraBtn: document.getElementById('reset-camera-btn'),
+        webglError: document.getElementById('webgl-error'),
+        webglErrorMsg: document.getElementById('webgl-error-msg'),
+        // ملصقات HTML ثلاثية الأبعاد
+        tickLabels: [
+          document.getElementById('tick-lbl-0'),
+          document.getElementById('tick-lbl-1'),
+          document.getElementById('tick-lbl-2'),
+          document.getElementById('tick-lbl-3'),
+          document.getElementById('tick-lbl-4'),
+          document.getElementById('tick-lbl-5'),
+          document.getElementById('tick-lbl-6')
+        ],
+        lblSO: document.getElementById('lbl-S-O'),
+        lblSX: document.getElementById('lbl-S-X'),
+        lblSY: document.getElementById('lbl-S-Y'),
+        lblSZ: document.getElementById('lbl-S-Z'),
+        lblSpO: document.getElementById('lbl-Sp-O'),
+        lblSpX: document.getElementById('lbl-Sp-X'),
+        lblSpY: document.getElementById('lbl-Sp-Y'),
+        lblSpZ: document.getElementById('lbl-Sp-Z'),
+        lblSpV: document.getElementById('lbl-Sp-V'),
+        lblDisp: document.getElementById('lbl-disp'),
+        lblP: document.getElementById('lbl-P'),
+        lblVelS: document.getElementById('lbl-vel-S'),
+        lblVelSp: document.getElementById('lbl-vel-Sp')
+      };
+
+      // دوال تنسيق الأرقام مع فواصل الآلاف (10,000.00) لوضوح القراءة ومنع تجاوز الحدود
+      const nf2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const nfInt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+      const nfSmart = new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+      function fmt(num) {
+        const val = Math.abs(num) < 1e-4 ? 0 : num;
+        return nf2.format(val);
+      }
+
+      function fmtSigned(num) {
+        const val = Math.abs(num) < 1e-4 ? 0 : num;
+        return (val > 0 ? '+' : '') + nf2.format(val);
+      }
+
+      function fmtCompact(num) {
+        const val = Math.abs(num) < 1e-4 ? 0 : num;
+        return Math.abs(val) >= 1000 ? nfInt.format(val) : nfSmart.format(val);
+      }
+
+      function clamp(val, min, max) {
+        return Math.max(min, Math.min(max, val));
+      }
+
+      // متغيرات مشهد Three.js
+      let scene, camera, renderer, camController;
+      let dynamicGridLines, dynamicGridStep = -1, dynamicGridCenterX = NaN, dynamicGridCenterZ = NaN;
+      let xTicksMeshGroup, activeTickPositions = [];
+      let frameSGroup, frameSpGroup, originSMesh, originSpMesh;
+      let axisSX, axisSY, axisSZ, negAxisSLine;
+      let axisSpX, axisSpY, axisSpZ, planeXYMesh, planeYZMesh;
+      let frameVelArrow, dispArrow;
+      let particleGroup, particleSphere, particleHalo, particleHitMesh;
+      let velArrowS, velArrowSp, velZeroRingS, velZeroRingSp;
+      let projLineS, projLineSp, projSpaceS, projSpaceSp, projVertLine, projDepthLine, dotOnX, dotOnXp;
+      let raycaster, pointerNDC, dragPlane, dragIntersect;
+      let lastFrameTime = performance.now();
+      let currentAxisExtentS = 6.2;
+      let currentAxisExtentSp = 5.6;
+
+      // ============================================================================
+      // متحكم الكاميرا ثلاثي الأبعاد المدمج — يدعم النطاقات الضخمة حتى 5,000,000+ متر
+      // ============================================================================
+      class CustomSphericalCameraController {
+        constructor(camera, domElement) {
+          this.camera = camera;
+          this.domElement = domElement;
+
+          // القيم المستهدفة واللحظية للتنعيم (Damping)
+          this.target = new THREE.Vector3(1.5, 1.0, 0.0);
+          this.currentTarget = this.target.clone();
+          this.panOffset = new THREE.Vector3(1.5, 1.0, 0.0);
+
+          this.radius = 14.0;
+          this.currentRadius = 14.0;
+          this.theta = 0.65; // الزاوية الأفقية حول Y
+          this.currentTheta = 0.65;
+          this.phi = 1.06;   // الزاوية القطبية من أعلى Y
+          this.currentPhi = 1.06;
+
+          this.minRadius = 0.5;
+          this.maxRadius = 5000000.0;
+          this.minPhi = 0.12;
+          this.maxPhi = Math.PI - 0.12;
+
+          this.mode = 'none'; // 'orbit' | 'pan' | 'touch'
+          this.lastX = 0;
+          this.lastY = 0;
+          this.lastPinchDist = 0;
+
+          this.bindEvents();
+          this.update(true);
+        }
+
+        resetToOrigin() {
+          state.cameraTargetMode = 'observer';
+          this.panOffset.set(1.2, 1.0, 0.0);
+          this.radius = 14.0;
+          this.theta = 0.65;
+          this.phi = 1.06;
+        }
+
+        focusOnPointP() {
+          state.cameraTargetMode = 'pointP';
+          this.panOffset.set(0, 0, 0);
+          this.radius = Math.max(12.0, Math.min(this.radius, 18.0));
+        }
+
+        fitAll(points) {
+          state.cameraTargetMode = 'observer';
+          let minX = Infinity, maxX = -Infinity;
+          let minY = Infinity, maxY = -Infinity;
+          let minZ = Infinity, maxZ = -Infinity;
+
+          points.forEach((pt) => {
+            if (pt.x < minX) minX = pt.x;
+            if (pt.x > maxX) maxX = pt.x;
+            if (pt.y < minY) minY = pt.y;
+            if (pt.y > maxY) maxY = pt.y;
+            if (pt.z < minZ) minZ = pt.z;
+            if (pt.z > maxZ) maxZ = pt.z;
+          });
+
+          const cx = (minX + maxX) * 0.5;
+          const cy = (minY + maxY) * 0.5;
+          const cz = (minZ + maxZ) * 0.5;
+          const span = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 8.0);
+
+          const baseAnchorX = state.perspective === 'frameSp' ? state.v * state.t : 0.0;
+          this.panOffset.set(cx - baseAnchorX, cy, cz);
+          this.radius = clamp(span * 1.38, 12.0, this.maxRadius);
+        }
+
+        setBaseFocus(anchorVec3) {
+          this.target.set(
+            anchorVec3.x + this.panOffset.x,
+            anchorVec3.y + this.panOffset.y,
+            anchorVec3.z + this.panOffset.z
+          );
+        }
+
+        panByPixels(dx, dy) {
+          const rect = this.domElement.getBoundingClientRect();
+          const height = Math.max(1, rect.height);
+          const fovRad = THREE.MathUtils.degToRad(this.camera.fov);
+          const worldPerPixel = (2 * this.currentRadius * Math.tan(fovRad * 0.5)) / height;
+
+          const right = new THREE.Vector3();
+          const up = new THREE.Vector3();
+          this.camera.matrix.extractBasis(right, up, new THREE.Vector3());
+
+          this.panOffset.addScaledVector(right, -dx * worldPerPixel);
+          this.panOffset.addScaledVector(up, dy * worldPerPixel);
+        }
+
+        bindEvents() {
+          const el = this.domElement;
+
+          el.addEventListener('contextmenu', (e) => e.preventDefault());
+
+          el.addEventListener('mousedown', (e) => {
+            if (state.isDraggingP) return;
+            this.lastX = e.clientX;
+            this.lastY = e.clientY;
+            if (e.button === 2 || e.button === 1 || e.shiftKey) {
+              this.mode = 'pan';
+            } else if (e.button === 0) {
+              this.mode = 'orbit';
+            }
+          });
+
+          window.addEventListener('mousemove', (e) => {
+            if (state.isDraggingP || this.mode === 'none') return;
+            const dx = e.clientX - this.lastX;
+            const dy = e.clientY - this.lastY;
+            this.lastX = e.clientX;
+            this.lastY = e.clientY;
+
+            if (this.mode === 'orbit') {
+              this.theta -= dx * 0.0065;
+              this.phi = clamp(this.phi - dy * 0.0065, this.minPhi, this.maxPhi);
+            } else if (this.mode === 'pan') {
+              this.panByPixels(dx, dy);
+            }
+          });
+
+          window.addEventListener('mouseup', () => {
+            this.mode = 'none';
+          });
+
+          el.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomFactor = e.deltaY > 0 ? 1.11 : 0.90;
+            this.radius = clamp(this.radius * zoomFactor, this.minRadius, this.maxRadius);
+          }, { passive: false });
+
+          // دعم اللمس المتعدد (إصبع للتدوير، وإصبعان للقرص والتقريب والتحريك)
+          el.addEventListener('touchstart', (e) => {
+            if (state.isDraggingP) return;
+            if (e.touches.length === 1) {
+              this.mode = 'orbit';
+              this.lastX = e.touches[0].clientX;
+              this.lastY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+              this.mode = 'touch';
+              const dx = e.touches[0].clientX - e.touches[1].clientX;
+              const dy = e.touches[0].clientY - e.touches[1].clientY;
+              this.lastPinchDist = Math.hypot(dx, dy);
+              this.lastX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+              this.lastY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+            }
+          }, { passive: true });
+
+          el.addEventListener('touchmove', (e) => {
+            if (state.isDraggingP || this.mode === 'none') return;
+            if (e.touches.length === 1 && this.mode === 'orbit') {
+              const dx = e.touches[0].clientX - this.lastX;
+              const dy = e.touches[0].clientY - this.lastY;
+              this.lastX = e.touches[0].clientX;
+              this.lastY = e.touches[0].clientY;
+              this.theta -= dx * 0.0075;
+              this.phi = clamp(this.phi - dy * 0.0075, this.minPhi, this.maxPhi);
+            } else if (e.touches.length === 2) {
+              const dx = e.touches[0].clientX - e.touches[1].clientX;
+              const dy = e.touches[0].clientY - e.touches[1].clientY;
+              const dist = Math.max(10, Math.hypot(dx, dy));
+              const midX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+              const midY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+
+              if (this.lastPinchDist > 0) {
+                const scale = this.lastPinchDist / dist;
+                this.radius = clamp(this.radius * scale, this.minRadius, this.maxRadius);
+              }
+              this.panByPixels(midX - this.lastX, midY - this.lastY);
+
+              this.lastPinchDist = dist;
+              this.lastX = midX;
+              this.lastY = midY;
+            }
+          }, { passive: true });
+
+          el.addEventListener('touchend', () => {
+            this.mode = 'none';
+            this.lastPinchDist = 0;
+          });
+        }
+
+        update(instant = false) {
+          const ease = instant ? 1.0 : 0.16;
+          this.currentRadius += (this.radius - this.currentRadius) * ease;
+          this.currentTheta += (this.theta - this.currentTheta) * ease;
+          this.currentPhi += (this.phi - this.currentPhi) * ease;
+          this.currentTarget.lerp(this.target, ease);
+
+          // تحديث مستويات القص القريبة والبعيدة ديناميكياً لمنع اختفاء الأجسام عند الإحداثيات الكبيرة (10,000+)
+          const desiredNear = Math.max(0.05, this.currentRadius * 0.0005);
+          const desiredFar = Math.max(50000000.0, this.currentRadius * 25.0);
+          if (Math.abs(this.camera.near - desiredNear) / this.camera.near > 0.05 || this.camera.far < desiredFar * 0.5) {
+            this.camera.near = desiredNear;
+            this.camera.far = desiredFar;
+            this.camera.updateProjectionMatrix();
+          }
+
+          const sinPhi = Math.sin(this.currentPhi);
+          const x = this.currentTarget.x + this.currentRadius * sinPhi * Math.sin(this.currentTheta);
+          const y = this.currentTarget.y + this.currentRadius * Math.cos(this.currentPhi);
+          const z = this.currentTarget.z + this.currentRadius * sinPhi * Math.cos(this.currentTheta);
+
+          this.camera.position.set(x, y, z);
+          this.camera.lookAt(this.currentTarget);
+          this.camera.updateMatrixWorld();
+        }
+      }
+
+      // ============================================================================
+      // دوال بناء العناصر الهندسية ثلاثية الأبعاد القابلة للتكيّف مع المسافة
+      // ============================================================================
+      function createScalableAxis(dirVec, colorHex, emissiveHex, baseRadius = 0.042) {
+        const group = new THREE.Group();
+        const mat = new THREE.MeshStandardMaterial({
+          color: colorHex,
+          emissive: emissiveHex,
+          emissiveIntensity: 0.32,
+          roughness: 0.3,
+          metalness: 0.2
+        });
+
+        const shaftGeo = new THREE.CylinderGeometry(baseRadius, baseRadius, 1, 16);
+        shaftGeo.translate(0, 0.5, 0);
+        const shaft = new THREE.Mesh(shaftGeo, mat);
+
+        const headGeo = new THREE.ConeGeometry(baseRadius * 2.6, 1, 20);
+        headGeo.translate(0, 0.5, 0);
+        const head = new THREE.Mesh(headGeo, mat);
+
+        group.add(shaft, head);
+        group.userData = { shaft, head };
+
+        const up = new THREE.Vector3(0, 1, 0);
+        const normDir = dirVec.clone().normalize();
+        group.quaternion.setFromUnitVectors(up, normDir);
+
+        return group;
+      }
+
+      function updateScalableAxis(axisGroup, length, visScale) {
+        const { shaft, head } = axisGroup.userData;
+        const headLen = 0.34 * visScale;
+        const shaftLen = Math.max(0.05 * visScale, length - headLen);
+
+        shaft.scale.set(visScale, shaftLen, visScale);
+        head.scale.set(visScale, headLen, visScale);
+        head.position.set(0, shaftLen, 0);
+      }
+
+      // إنشاء سهم ديناميكي على محور X يتمدد وينعكس حسب الإشارة ويتكيّف مع المسافة
+      function createDynamicXArrow(colorHex, emissiveHex, shaftRadius = 0.038, headRadius = 0.11, headLen = 0.28) {
+        const group = new THREE.Group();
+        const mat = new THREE.MeshStandardMaterial({
+          color: colorHex,
+          emissive: emissiveHex,
+          emissiveIntensity: 0.38,
+          roughness: 0.28,
+          metalness: 0.2
+        });
+
+        const shaftGeo = new THREE.CylinderGeometry(shaftRadius, shaftRadius, 1, 16);
+        shaftGeo.rotateZ(-Math.PI * 0.5);
+        shaftGeo.translate(0.5, 0, 0);
+        const shaft = new THREE.Mesh(shaftGeo, mat);
+
+        const headGeo = new THREE.ConeGeometry(headRadius, headLen, 20);
+        headGeo.rotateZ(-Math.PI * 0.5);
+        const head = new THREE.Mesh(headGeo, mat);
+
+        group.add(shaft, head);
+        group.userData = { shaft, head, baseHeadLen: headLen };
+        return group;
+      }
+
+      function updateDynamicXArrow(arrowGroup, signedLength, visScale = 1.0, minAbsThreshold = 0.04) {
+        const absLen = Math.abs(signedLength);
+        if (absLen < minAbsThreshold) {
+          arrowGroup.visible = false;
+          return;
+        }
+        arrowGroup.visible = true;
+        const dir = signedLength >= 0 ? 1 : -1;
+        arrowGroup.rotation.y = dir > 0 ? 0 : Math.PI;
+
+        const { shaft, head, baseHeadLen } = arrowGroup.userData;
+        const scaledHeadLen = baseHeadLen * visScale;
+        const effectiveHead = Math.min(scaledHeadLen, absLen * 0.48);
+        const shaftLen = Math.max(0.01 * visScale, absLen - effectiveHead);
+
+        shaft.scale.set(shaftLen, visScale, visScale);
+        head.scale.set(effectiveHead / baseHeadLen, visScale, visScale);
+        head.position.set(shaftLen + effectiveHead * 0.5, 0, 0);
+      }
+
+      function createDashedSegment(colorHex, opacity = 0.85) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0], 3));
+        const mat = new THREE.LineDashedMaterial({
+          color: colorHex,
+          dashSize: 0.22,
+          gapSize: 0.14,
+          transparent: true,
+          opacity
+        });
+        return new THREE.Line(geo, mat);
+      }
+
+      function updateLinePositions(line, x1, y1, z1, x2, y2, z2, visScale = 1.0) {
+        const pos = line.geometry.attributes.position;
+        pos.setXYZ(0, x1, y1, z1);
+        pos.setXYZ(1, x2, y2, z2);
+        pos.needsUpdate = true;
+        line.material.dashSize = 0.22 * visScale;
+        line.material.gapSize = 0.14 * visScale;
+        line.computeLineDistances();
+      }
+
+      // تحديث الشبكة الأرضية الديناميكية وعلامات التدريج على محور X حسب مقياس المسافة
+      function updateDynamicGridAndTicks(camDist, targetX, targetZ) {
+        if (!dynamicGridLines || !xTicksMeshGroup) return;
+
+        // اختيار خطوة الشبكة كقوى العدد 10 (1, 10, 100, 1000, 10000...)
+        const rawStep = Math.max(1.0, camDist / 16.0);
+        const step = Math.pow(10, Math.floor(Math.log10(rawStep)));
+        const centerX = Math.round(targetX / step) * step;
+        const centerZ = Math.round(targetZ / step) * step;
+
+        if (step !== dynamicGridStep || centerX !== dynamicGridCenterX || centerZ !== dynamicGridCenterZ) {
+          dynamicGridStep = step;
+          dynamicGridCenterX = centerX;
+          dynamicGridCenterZ = centerZ;
+
+          const halfCells = 24;
+          const halfSpan = halfCells * step;
+          const positions = [];
+
+          for (let i = -halfCells; i <= halfCells; i++) {
+            const offset = i * step;
+            // خطوط موازية لمحور Z
+            positions.push(centerX + offset, -0.01, centerZ - halfSpan);
+            positions.push(centerX + offset, -0.01, centerZ + halfSpan);
+            // خطوط موازية لمحور X
+            positions.push(centerX - halfSpan, -0.01, centerZ + offset);
+            positions.push(centerX + halfSpan, -0.01, centerZ + offset);
+          }
+
+          dynamicGridLines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+          dynamicGridLines.geometry.attributes.position.needsUpdate = true;
+
+          // تحديث علامات القياس على محور X لإظهار الأرقام الكبيرة بوضوح
+          const majorStep = step * 2;
+          const majorCenter = Math.round(targetX / majorStep) * majorStep;
+          activeTickPositions = [];
+
+          for (let idx = 0; idx < 7; idx++) {
+            const gx = majorCenter + (idx - 3) * majorStep;
+            const tickMesh = xTicksMeshGroup.children[idx];
+            if (Math.abs(gx) < step * 0.1) {
+              tickMesh.visible = false;
+            } else {
+              tickMesh.visible = true;
+              tickMesh.position.set(gx, 0, 0);
+              tickMesh.scale.set(step * 0.04, step * 0.04, step * 0.35);
+              activeTickPositions.push({ idx, x: gx });
+            }
+          }
+        }
+      }
+
+      // ============================================================================
+      // تهيئة مشهد WebGL و Three.js
+      // ============================================================================
+      function initThreeScene() {
+        try {
+          const width = Math.max(1, dom.viewport.clientWidth);
+          const height = Math.max(1, dom.viewport.clientHeight);
+
+          scene = new THREE.Scene();
+
+          camera = new THREE.PerspectiveCamera(45, width / height, 0.05, 50000000);
+
+          renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+          renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+          renderer.setSize(width, height);
+          dom.viewport.insertBefore(renderer.domElement, dom.viewport.firstChild);
+
+          camController = new CustomSphericalCameraController(camera, renderer.domElement);
+
+          // الإضاءة
+          const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.78);
+          scene.add(ambientLight);
+
+          const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.9);
+          dirLight1.position.set(12, 20, 14);
+          scene.add(dirLight1);
+
+          const dirLight2 = new THREE.DirectionalLight(0x38bdf8, 0.45);
+          dirLight2.position.set(-14, -8, -10);
+          scene.add(dirLight2);
+
+          // الشبكة الأرضية الديناميكية متعددة المقاييس (تتكيّف من 1 متر حتى ملايين الأمتار)
+          const gridGeo = new THREE.BufferGeometry();
+          const gridMat = new THREE.LineBasicMaterial({ color: 0x162d4d, transparent: true, opacity: 0.65 });
+          dynamicGridLines = new THREE.LineSegments(gridGeo, gridMat);
+          scene.add(dynamicGridLines);
+
+          // علامات قياس ديناميكية على محور X
+          xTicksMeshGroup = new THREE.Group();
+          const tickMat = new THREE.MeshBasicMaterial({ color: 0x2563eb, transparent: true, opacity: 0.7 });
+          const tickGeo = new THREE.BoxGeometry(1, 1, 1);
+          for (let i = 0; i < 7; i++) {
+            xTicksMeshGroup.add(new THREE.Mesh(tickGeo, tickMat));
+          }
+          scene.add(xTicksMeshGroup);
+
+          // 1. بناء الإطار الثابت S (أزرق سماوي #38bdf8)
+          frameSGroup = new THREE.Group();
+          originSMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(0.16, 24, 24),
+            new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.5 })
+          );
+          frameSGroup.add(originSMesh);
+
+          axisSX = createScalableAxis(new THREE.Vector3(1, 0, 0), 0x38bdf8, 0x0284c7, 0.044);
+          axisSY = createScalableAxis(new THREE.Vector3(0, 1, 0), 0x38bdf8, 0x0284c7, 0.042);
+          axisSZ = createScalableAxis(new THREE.Vector3(0, 0, 1), 0x38bdf8, 0x0284c7, 0.042);
+          frameSGroup.add(axisSX, axisSY, axisSZ);
+
+          const negAxisSMat = new THREE.LineBasicMaterial({ color: 0x0284c7, transparent: true, opacity: 0.42 });
+          const negAxisSGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-12, 0, 0),
+            new THREE.Vector3(0, 0, 0)
+          ]);
+          negAxisSLine = new THREE.Line(negAxisSGeo, negAxisSMat);
+          frameSGroup.add(negAxisSLine);
+          scene.add(frameSGroup);
+
+          // 2. بناء الإطار المتحرك S' (ذهبي #fbbf24)
+          frameSpGroup = new THREE.Group();
+          originSpMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(0.14, 24, 24),
+            new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xd97706, emissiveIntensity: 0.55 })
+          );
+          frameSpGroup.add(originSpMesh);
+
+          axisSpX = createScalableAxis(new THREE.Vector3(1, 0, 0), 0xfbbf24, 0xd97706, 0.036);
+          axisSpY = createScalableAxis(new THREE.Vector3(0, 1, 0), 0xfbbf24, 0xd97706, 0.036);
+          axisSpZ = createScalableAxis(new THREE.Vector3(0, 0, 1), 0xfbbf24, 0xd97706, 0.036);
+          frameSpGroup.add(axisSpX, axisSpY, axisSpZ);
+
+          // مستويان مرجعيان شفافان يمثلان الإطار المتحرك S'
+          const planeMat = new THREE.MeshBasicMaterial({
+            color: 0xfbbf24,
+            transparent: true,
+            opacity: 0.045,
+            side: THREE.DoubleSide,
+            depthWrite: false
+          });
+          planeXYMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), planeMat);
+          planeYZMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), planeMat);
+          planeYZMesh.rotation.y = Math.PI * 0.5;
+          frameSpGroup.add(planeXYMesh, planeYZMesh);
+
+          // متجه سرعة الإطار المتحرك v فوق نقطة الأصل O'
+          frameVelArrow = createDynamicXArrow(0xfbbf24, 0xd97706, 0.035, 0.1, 0.26);
+          frameSpGroup.add(frameVelArrow);
+
+          scene.add(frameSpGroup);
+
+          // 3. متجه الإزاحة الأخضر الزمردي Δx = v·t بين O و O'
+          dispArrow = createDynamicXArrow(0x34d399, 0x059669, 0.045, 0.12, 0.3);
+          scene.add(dispArrow);
+
+          // 4. بناء النقطة المرصودة P وخطوط الإسقاط ومتجهات السرعة
+          particleGroup = new THREE.Group();
+
+          particleSphere = new THREE.Mesh(
+            new THREE.SphereGeometry(0.22, 28, 28),
+            new THREE.MeshStandardMaterial({
+              color: 0xf43f5e,
+              emissive: 0xe11d48,
+              emissiveIntensity: 0.65,
+              roughness: 0.2
+            })
+          );
+          particleGroup.add(particleSphere);
+
+          particleHalo = new THREE.Mesh(
+            new THREE.SphereGeometry(0.36, 24, 24),
+            new THREE.MeshBasicMaterial({
+              color: 0xfb7185,
+              transparent: true,
+              opacity: 0.24,
+              depthWrite: false
+            })
+          );
+          particleGroup.add(particleHalo);
+
+          // كرة غير مرئية للإمساك بالنقطة P بسهولة بالماوس أو اللمس عند أي مسافة
+          particleHitMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(0.65, 16, 16),
+            new THREE.MeshBasicMaterial({ visible: false })
+          );
+          particleGroup.add(particleHitMesh);
+
+          // متجه سرعة الجسم P بالنسبة للإطار الثابت S (أزرق سماوي أعلى P)
+          velArrowS = createDynamicXArrow(0x38bdf8, 0x0284c7, 0.036, 0.105, 0.28);
+          particleGroup.add(velArrowS);
+
+          // متجه سرعة الجسم P بالنسبة للإطار المتحرك S' (ذهبي أسفل P)
+          velArrowSp = createDynamicXArrow(0xfbbf24, 0xd97706, 0.036, 0.105, 0.28);
+          particleGroup.add(velArrowSp);
+
+          // حلقات السكون النسبي عند انعدام u_x أو u'_x
+          const zeroRingGeo = new THREE.RingGeometry(0.055, 0.095, 24);
+          velZeroRingS = new THREE.Mesh(
+            zeroRingGeo,
+            new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide })
+          );
+          particleGroup.add(velZeroRingS);
+
+          velZeroRingSp = new THREE.Mesh(
+            zeroRingGeo,
+            new THREE.MeshBasicMaterial({ color: 0xfbbf24, side: THREE.DoubleSide })
+          );
+          particleGroup.add(velZeroRingSp);
+
+          scene.add(particleGroup);
+
+          // خطوط الإسقاط المتقطعة ونقاط الإسقاط على المحاور
+          projVertLine = createDashedSegment(0xfb7185, 0.65);
+          projDepthLine = createDashedSegment(0xfb7185, 0.65);
+          projLineS = createDashedSegment(0x38bdf8, 0.9);
+          projLineSp = createDashedSegment(0xfbbf24, 0.9);
+          projSpaceS = createDashedSegment(0x38bdf8, 0.45);
+          projSpaceSp = createDashedSegment(0xfbbf24, 0.45);
+          scene.add(projVertLine, projDepthLine, projLineS, projLineSp, projSpaceS, projSpaceSp);
+
+          dotOnX = new THREE.Mesh(
+            new THREE.SphereGeometry(0.085, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+          );
+          dotOnXp = new THREE.Mesh(
+            new THREE.SphereGeometry(0.085, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
+          );
+          scene.add(dotOnX, dotOnXp);
+
+          // أدوات Raycaster للسحب المباشر ثلاثي الأبعاد للنقطة P
+          raycaster = new THREE.Raycaster();
+          pointerNDC = new THREE.Vector2();
+          dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+          dragIntersect = new THREE.Vector3();
+
+          setupViewportDragging();
+          setupResizeObserver();
+          applyScaleMultiplier(1, false);
+          updateSimulation();
+          requestAnimationFrame(animateLoop);
+        } catch (err) {
+          dom.webglError.classList.remove('hidden');
+          dom.webglErrorMsg.textContent = 'حدث خطأ أثناء تهيئة المشهد ثلاثي الأبعاد: ' + (err && err.message ? err.message : err);
+        }
+      }
+
+      // ============================================================================
+      // السحب المباشر ثلاثي الأبعاد للنقطة P بالماوس أو اللمس (يدعم جميع المقاييس)
+      // ============================================================================
+      function updatePointerNDC(clientX, clientY) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointerNDC.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        pointerNDC.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      }
+
+      function hitTestParticle(clientX, clientY) {
+        if (!state.showParticle || !particleHitMesh) return false;
+        updatePointerNDC(clientX, clientY);
+        raycaster.setFromCamera(pointerNDC, camera);
+        const hits = raycaster.intersectObject(particleHitMesh, false);
+        return hits.length > 0;
+      }
+
+      function setupViewportDragging() {
+        const canvas = renderer.domElement;
+        let dragVerticalMode = false;
+
+        function startDrag(clientX, clientY) {
+          if (!hitTestParticle(clientX, clientY)) return false;
+          state.isDraggingP = true;
+          canvas.style.cursor = 'grabbing';
+
+          const camDir = new THREE.Vector3();
+          camera.getWorldDirection(camDir);
+          if (Math.abs(camDir.y) < 0.28) {
+            dragVerticalMode = true;
+            dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 0, 1), particleGroup.position);
+          } else {
+            dragVerticalMode = false;
+            dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), particleGroup.position);
+          }
+          return true;
+        }
+
+        function moveDrag(clientX, clientY) {
+          updatePointerNDC(clientX, clientY);
+          raycaster.setFromCamera(pointerNDC, camera);
+          if (raycaster.ray.intersectPlane(dragPlane, dragIntersect)) {
+            const snap = Math.max(0.1, state.scaleMultiplier * 0.1);
+            const roundSnap = (val) => Math.round(val / snap) * snap;
+
+            const newXS = clamp(dragIntersect.x, -100000000, 100000000);
+            state.x0 = roundSnap(newXS - state.ux * state.t);
+
+            if (dragVerticalMode) {
+              state.py = roundSnap(clamp(dragIntersect.y, -100000000, 100000000));
+            } else {
+              state.pz = roundSnap(clamp(dragIntersect.z, -100000000, 100000000));
+            }
+
+            ensureSliderBoundsCoverValues();
+            updateSimulation(true);
+          }
+        }
+
+        function endDrag() {
+          if (state.isDraggingP) {
+            state.isDraggingP = false;
+            canvas.style.cursor = state.isHoveringP ? 'grab' : 'default';
+            updateSimulation(true);
+          }
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+          if (e.button === 0) {
+            startDrag(e.clientX, e.clientY);
+          }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+          if (state.isDraggingP) {
+            moveDrag(e.clientX, e.clientY);
+            return;
+          }
+          const hovering = hitTestParticle(e.clientX, e.clientY);
+          if (hovering !== state.isHoveringP) {
+            state.isHoveringP = hovering;
+            canvas.style.cursor = hovering ? 'grab' : 'default';
+            particleHalo.scale.setScalar(hovering ? 1.35 : 1.0);
+          }
+        });
+
+        window.addEventListener('mouseup', endDrag);
+
+        canvas.addEventListener('touchstart', (e) => {
+          if (e.touches.length === 1) {
+            startDrag(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+          if (state.isDraggingP && e.touches.length === 1) {
+            moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        }, { passive: true });
+
+        window.addEventListener('touchend', endDrag);
+      }
+
+      // ============================================================================
+      // ضبط أبعاد المشهد تلقائياً عند تغيير حجم الشاشة أو طي لوحة التحكم
+      // ============================================================================
+      function setupResizeObserver() {
+        const handleResize = () => {
+          if (!renderer || !camera) return;
+          const w = Math.max(1, dom.viewport.clientWidth);
+          const h = Math.max(1, dom.viewport.clientHeight);
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+          renderer.setSize(w, h);
+          updateProjectedLabels();
+        };
+
+        if (typeof ResizeObserver !== 'undefined') {
+          const ro = new ResizeObserver(handleResize);
+          ro.observe(dom.viewport);
+        }
+        window.addEventListener('resize', handleResize);
+      }
+
+      // ============================================================================
+      // إسقاط الشارات النصية وعلامات المحور X فوق المشهد ثلاثي الأبعاد
+      // ============================================================================
+      const tmpProjVec = new THREE.Vector3();
+
+      function placeProjectedLabel(el, wx, wy, wz, anchorTransform = 'translate(-50%, -50%)', isVisible = true) {
+        if (!isVisible || !camera) {
+          el.style.display = 'none';
+          return;
+        }
+        tmpProjVec.set(wx, wy, wz);
+        tmpProjVec.project(camera);
+
+        if (tmpProjVec.z > 1 || tmpProjVec.x < -1.15 || tmpProjVec.x > 1.15 || tmpProjVec.y < -1.15 || tmpProjVec.y > 1.15) {
+          el.style.display = 'none';
+          return;
+        }
+
+        const w = dom.viewport.clientWidth;
+        const h = dom.viewport.clientHeight;
+        const screenX = (tmpProjVec.x * 0.5 + 0.5) * w;
+        const screenY = (-tmpProjVec.y * 0.5 + 0.5) * h;
+
+        el.style.display = 'block';
+        el.style.transform = `translate3d(${screenX.toFixed(1)}px, ${screenY.toFixed(1)}px, 0) ${anchorTransform}`;
+      }
+
+      function getVisualScale() {
+        if (!camController) return 1.0;
+        return Math.max(1.0, camController.currentRadius / 14.0);
+      }
+
+      function getVelocityVisualLength(vel) {
+        if (Math.abs(vel) < 1e-4) return 0;
+        const visScale = getVisualScale();
+        const normalized = Math.abs(vel) / Math.max(1, state.scaleMultiplier);
+        return Math.sign(vel) * visScale * Math.min(3.6, Math.max(0.6, normalized * 0.65));
+      }
+
+      function updateProjectedLabels() {
+        if (!camera) return;
+        const { t, v, x0, ux, py, pz, showParticle, showVelVectors, hideNumbers } = state;
+        const visScale = getVisualScale();
+        const originSpX = v * t;
+        const xS = x0 + ux * t;
+        const uxSp = ux - v;
+
+        // 0. علامات القياس الديناميكية على محور X (تُخفى عند تفعيل وضع العرض الصافي بدون أرقام)
+        for (let i = 0; i < dom.tickLabels.length; i++) {
+          const tickInfo = activeTickPositions.find((item) => item.idx === i);
+          if (!tickInfo || hideNumbers) {
+            dom.tickLabels[i].style.display = 'none';
+          } else {
+            dom.tickLabels[i].textContent = fmtCompact(tickInfo.x);
+            placeProjectedLabel(dom.tickLabels[i], tickInfo.x, -0.25 * visScale, 0.25 * visScale, 'translate(-50%, 0%)', true);
+          }
+        }
+
+        // 1. رموز الإطار الثابت S
+        placeProjectedLabel(dom.lblSO, -0.45 * visScale, -0.45 * visScale, 0.35 * visScale);
+        placeProjectedLabel(dom.lblSX, currentAxisExtentS + 0.35 * visScale, -0.35 * visScale, 0);
+        placeProjectedLabel(dom.lblSY, -0.35 * visScale, 4.75 * visScale, 0);
+        placeProjectedLabel(dom.lblSZ, -0.35 * visScale, -0.25 * visScale, 4.75 * visScale);
+
+        // 2. رموز الإطار المتحرك S'
+        placeProjectedLabel(dom.lblSpO, originSpX + 0.52 * visScale, 0.45 * visScale, -0.35 * visScale);
+        placeProjectedLabel(dom.lblSpX, originSpX + currentAxisExtentSp + 0.35 * visScale, 0.35 * visScale, 0);
+        placeProjectedLabel(dom.lblSpY, originSpX + 0.35 * visScale, 4.75 * visScale, 0);
+        placeProjectedLabel(dom.lblSpZ, originSpX + 0.35 * visScale, 0.25 * visScale, 4.75 * visScale);
+
+        // 3. شارات القيم الرقمية (تُخفى في وضع العرض الصافي بدون أرقام)
+        const vArrowLen = getVelocityVisualLength(v);
+        placeProjectedLabel(dom.lblSpV, originSpX + vArrowLen * 0.5, 1.05 * visScale, 0, 'translate(-50%, -50%)', !hideNumbers && Math.abs(v) >= 1e-4);
+
+        const showDisp = !hideNumbers && Math.abs(originSpX) >= 0.14 * visScale;
+        placeProjectedLabel(dom.lblDisp, originSpX * 0.5, -0.82 * visScale, 0, 'translate(-50%, -50%)', showDisp);
+
+        // 4. شارة النقطة P وشارتي السرعة
+        placeProjectedLabel(dom.lblP, xS, py, pz + 0.46 * visScale, 'translate(-50%, -50%)', showParticle);
+
+        const showVelBadges = showParticle && showVelVectors && !hideNumbers;
+        const lenS = getVelocityVisualLength(ux);
+        const lenSp = getVelocityVisualLength(uxSp);
+
+        placeProjectedLabel(dom.lblVelS, xS + lenS * 0.5, py + 0.64 * visScale, pz, 'translate(-50%, -100%)', showVelBadges);
+        placeProjectedLabel(dom.lblVelSp, xS + lenSp * 0.5, py - 0.64 * visScale, pz, 'translate(-50%, 0%)', showVelBadges);
+      }
+
+      // ============================================================================
+      // تحديث العناصر الهندسية المتكيّفة مع المسافة (3D Visuals)
+      // ============================================================================
+      function updateAdaptive3DVisuals() {
+        if (!frameSGroup || !camController) return;
+        const { t, v, x0, ux, py, pz, showParticle, showVelVectors } = state;
+        const visScale = getVisualScale();
+        const originSpX = v * t;
+        const xS = x0 + ux * t;
+        const xSp = xS - originSpX;
+        const uxSp = ux - v;
+
+        // تمديد محاور S و S' تلقائياً لتغطي الإحداثيات الكبيرة مهما بلغت
+        const maxReach = Math.max(6.2 * visScale, Math.abs(originSpX) + 4.0 * visScale, Math.abs(xS) + 4.0 * visScale);
+        currentAxisExtentS = maxReach;
+        currentAxisExtentSp = Math.max(5.6 * visScale, Math.abs(xSp) + 4.0 * visScale, 4.5 * visScale);
+
+        originSMesh.scale.setScalar(visScale);
+        updateScalableAxis(axisSX, currentAxisExtentS, visScale);
+        updateScalableAxis(axisSY, 4.5 * visScale, visScale);
+        updateScalableAxis(axisSZ, 4.5 * visScale, visScale);
+
+        const negPos = negAxisSLine.geometry.attributes.position;
+        negPos.setXYZ(0, -maxReach, 0, 0);
+        negPos.setXYZ(1, 0, 0, 0);
+        negPos.needsUpdate = true;
+
+        // تحديث الإطار المتحرك S'
+        frameSpGroup.position.x = originSpX;
+        originSpMesh.scale.setScalar(visScale);
+        originSpMesh.position.set(0, 0.015 * visScale, 0.015 * visScale);
+
+        updateScalableAxis(axisSpX, currentAxisExtentSp, visScale);
+        axisSpX.position.set(0, 0.018 * visScale, 0.018 * visScale);
+
+        updateScalableAxis(axisSpY, 4.5 * visScale, visScale);
+        axisSpY.position.set(0.018 * visScale, 0, 0.018 * visScale);
+
+        updateScalableAxis(axisSpZ, 4.5 * visScale, visScale);
+        axisSpZ.position.set(0.018 * visScale, 0.018 * visScale, 0);
+
+        planeXYMesh.scale.set(5.2 * visScale, 4.2 * visScale, 1);
+        planeXYMesh.position.set(2.6 * visScale, 2.1 * visScale, 0.02 * visScale);
+        planeYZMesh.scale.set(4.2 * visScale, 4.2 * visScale, 1);
+        planeYZMesh.position.set(0.02 * visScale, 2.1 * visScale, 2.1 * visScale);
+
+        // متجه سرعة الإطار المتحرك v ومتجه الإزاحة الأخضر
+        frameVelArrow.position.set(0, 0.65 * visScale, 0);
+        updateDynamicXArrow(frameVelArrow, getVelocityVisualLength(v), visScale, 0.02);
+
+        dispArrow.position.set(0, -0.35 * visScale, 0);
+        updateDynamicXArrow(dispArrow, originSpX, visScale, 0.08 * visScale);
+
+        // تحديث النقطة المرصودة P وخطوط الإسقاط ومتجهات السرعة
+        particleGroup.visible = showParticle;
+        projVertLine.visible = showParticle;
+        projDepthLine.visible = showParticle;
+        projLineS.visible = showParticle && Math.abs(xS) >= 0.05 * visScale;
+        projLineSp.visible = showParticle && Math.abs(xSp) >= 0.05 * visScale;
+        projSpaceS.visible = showParticle;
+        projSpaceSp.visible = showParticle;
+        dotOnX.visible = showParticle;
+        dotOnXp.visible = showParticle;
+
+        if (showParticle) {
+          particleGroup.position.set(xS, py, pz);
+          particleSphere.scale.setScalar(visScale);
+          particleHalo.scale.setScalar(state.isHoveringP ? 1.35 * visScale : visScale);
+          particleHitMesh.scale.setScalar(visScale * 1.25);
+
+          const spOffsetY = 0.14 * visScale;
+          updateLinePositions(projVertLine, xS, py, pz, xS, 0, pz, visScale);
+          updateLinePositions(projDepthLine, xS, 0, pz, xS, 0, 0, visScale);
+          updateLinePositions(projLineS, 0, 0, 0, xS, 0, 0, visScale);
+          updateLinePositions(projLineSp, originSpX, spOffsetY, 0, xS, spOffsetY, 0, visScale);
+          updateLinePositions(projSpaceS, 0, 0, 0, xS, py, pz, visScale);
+          updateLinePositions(projSpaceSp, originSpX, 0.015 * visScale, 0.015 * visScale, xS, py, pz, visScale);
+
+          dotOnX.position.set(xS, 0, 0);
+          dotOnX.scale.setScalar(visScale);
+          dotOnXp.position.set(xS, spOffsetY, 0);
+          dotOnXp.scale.setScalar(visScale);
+
+          // تحديث متجهي السرعة الملحقين بالنقطة P
+          velArrowS.position.set(0, 0.36 * visScale, 0);
+          velArrowSp.position.set(0, -0.36 * visScale, 0);
+          velZeroRingS.position.set(0, 0.36 * visScale, 0);
+          velZeroRingSp.position.set(0, -0.36 * visScale, 0);
+          velZeroRingS.scale.setScalar(visScale);
+          velZeroRingSp.scale.setScalar(visScale);
+
+          if (showVelVectors) {
+            updateDynamicXArrow(velArrowS, getVelocityVisualLength(ux), visScale, 0.02);
+            updateDynamicXArrow(velArrowSp, getVelocityVisualLength(uxSp), visScale, 0.02);
+            velZeroRingS.visible = Math.abs(ux) < 1e-4;
+            velZeroRingSp.visible = Math.abs(uxSp) < 1e-4;
+          } else {
+            velArrowS.visible = false;
+            velArrowSp.visible = false;
+            velZeroRingS.visible = false;
+            velZeroRingSp.visible = false;
+          }
+        }
+
+        // تحديث الشبكة الأرضية الديناميكية وعلامات المحور X
+        updateDynamicGridAndTicks(camController.currentRadius, camController.currentTarget.x, camController.currentTarget.z);
+      }
+
+      // ============================================================================
+      // إدارة مضاعف نطاق القياس (Scale Multiplier) وتحديث حدود الأشرطة تلقائياً
+      // ============================================================================
+      function applyScaleMultiplier(mult, syncInputs = true) {
+        state.scaleMultiplier = mult;
+
+        dom.scaleBtns.forEach((btn) => {
+          const isSelected = Number(btn.dataset.scale) === mult;
+          if (isSelected) {
+            btn.className = 'scale-btn ltr-math rounded-lg py-1.5 text-xs font-extrabold bg-indigo-600 text-white border border-indigo-400 shadow transition active:scale-95';
+          } else {
+            btn.className = 'scale-btn ltr-math rounded-lg py-1.5 text-xs font-bold bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700 transition active:scale-95';
+          }
+        });
+
+        const maxX0 = 20 * mult;
+        const maxYZ = 10 * mult;
+        const maxVel = 10 * mult;
+        const step = mult === 1 ? 0.1 : mult * 0.1;
+
+        dom.scaleRangeHint.textContent = `[-${nfInt.format(maxX0)}, +${nfInt.format(maxX0)}] m`;
+
+        dom.particleX0Slider.min = -maxX0;
+        dom.particleX0Slider.max = maxX0;
+        dom.particleX0Slider.step = step;
+
+        dom.particleYSlider.min = -maxYZ;
+        dom.particleYSlider.max = maxYZ;
+        dom.particleYSlider.step = step;
+
+        dom.particleZSlider.min = -maxYZ;
+        dom.particleZSlider.max = maxYZ;
+        dom.particleZSlider.step = step;
+
+        dom.frameSpeedSlider.min = -maxVel;
+        dom.frameSpeedSlider.max = maxVel;
+        dom.frameSpeedSlider.step = step;
+        dom.frameSpeedMinLbl.textContent = `-${nfInt.format(maxVel)}`;
+        dom.frameSpeedMaxLbl.textContent = `+${nfInt.format(maxVel)}`;
+
+        dom.particleSpeedSlider.min = -maxVel;
+        dom.particleSpeedSlider.max = maxVel;
+        dom.particleSpeedSlider.step = step;
+
+        if (syncInputs) {
+          updateSimulation(true);
+        }
+      }
+
+      // إذا أدخل المستخدم رقماً أكبر من النطاق الحالي، نوسع النطاق تلقائياً ليتطابق الشريط معه
+      function ensureSliderBoundsCoverValues() {
+        const peakCoord = Math.max(Math.abs(state.x0), Math.abs(state.py) * 2, Math.abs(state.pz) * 2, Math.abs(state.v) * 2, Math.abs(state.ux) * 2);
+        const multipliers = [1, 100, 1000, 10000];
+        for (let i = 0; i < multipliers.length; i++) {
+          if (peakCoord <= 20 * multipliers[i]) {
+            if (state.scaleMultiplier < multipliers[i]) {
+              applyScaleMultiplier(multipliers[i], false);
+            }
+            break;
+          }
+        }
+
+        // توسيع حدود أي شريط فردي إذا تجاوزت القيمة 200,000
+        const expandIfNeeded = (slider, val) => {
+          if (val < Number(slider.min)) slider.min = val;
+          if (val > Number(slider.max)) slider.max = val;
+        };
+        expandIfNeeded(dom.timeSlider, state.t);
+        expandIfNeeded(dom.frameSpeedSlider, state.v);
+        expandIfNeeded(dom.particleSpeedSlider, state.ux);
+        expandIfNeeded(dom.particleX0Slider, state.x0);
+        expandIfNeeded(dom.particleYSlider, state.py);
+        expandIfNeeded(dom.particleZSlider, state.pz);
+      }
+
+      function triggerFitAll() {
+        if (!camController) return;
+        const { t, v, x0, ux, py, pz, showParticle } = state;
+        const originSpX = v * t;
+        const xS = x0 + ux * t;
+
+        const points = [
+          { x: 0, y: 0, z: 0 },
+          { x: originSpX, y: 0, z: 0 }
+        ];
+        if (showParticle) {
+          points.push({ x: xS, y: py, z: pz });
+        }
+        camController.fitAll(points);
+      }
+
+      // ============================================================================
+      // تحديث الحسابات الفيزيائية والمعادلات والعناصر المرئية
+      // ============================================================================
+      function updateSimulation(syncNumberInputs = true) {
+        const { t, v, x0, ux, py, pz, showParticle, showVelVectors, hideNumbers } = state;
+        const originSpX = v * t;       // إزاحة الإطار المتحرك S' بالنسبة للإطار S
+        const xS = x0 + ux * t;        // إحداثي الجسم P في الإطار الثابت S
+        const xSp = xS - originSpX;    // إحداثي الجسم P في الإطار المتحرك S' (x' = x - v·t)
+        const uxSp = ux - v;           // سرعة الجسم P بالنسبة للإطار المتحرك S' (u'_x = u_x - v)
+
+        updateAdaptive3DVisuals();
+
+        // تحديث نصوص الشارات العائمة
+        dom.lblSpV.textContent = `v = ${fmtSigned(v)} m/s`;
+        dom.lblDisp.textContent = `Δx = v·t = ${fmt(originSpX)} m`;
+        dom.lblP.textContent = hideNumbers ? 'P' : `P (${fmt(xS)}, ${fmt(py)}, ${fmt(pz)})`;
+
+        if (Math.abs(ux) < 1e-4) {
+          dom.lblVelS.innerHTML = `ساكن بالنسبة لـ S (<span class="ltr-math">u<sub>x</sub> = 0</span>)`;
+        } else {
+          dom.lblVelS.innerHTML = `سرعة P بالنسبة لـ S: <span class="ltr-math">u<sub>x</sub> = ${fmtSigned(ux)} m/s</span>`;
+        }
+
+        if (Math.abs(uxSp) < 1e-4) {
+          dom.lblVelSp.innerHTML = `ساكن بالنسبة لـ S' (<span class="ltr-math">u'<sub>x</sub> = 0</span>)`;
+        } else {
+          dom.lblVelSp.innerHTML = `سرعة P بالنسبة لـ S': <span class="ltr-math">u'<sub>x</sub> = ${fmtSigned(uxSp)} m/s</span>`;
+        }
+
+        // تحديث وضع العرض الصافي (إخفاء الأرقام والإحداثيات من شاشة العرض)
+        dom.velocityHud.classList.toggle('hidden', hideNumbers);
+        dom.statusPill.classList.toggle('hidden', hideNumbers);
+        dom.hideNumbersCb.checked = hideNumbers;
+        dom.quickCleanViewText.textContent = hideNumbers ? 'إظهار الأرقام' : 'إخفاء الأرقام';
+        dom.eyeOffIcon.classList.toggle('hidden', hideNumbers);
+        dom.eyeOnIcon.classList.toggle('hidden', !hideNumbers);
+
+        if (hideNumbers) {
+          dom.quickCleanViewBtn.className = 'rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-400/80 px-3 py-1.5 text-[11px] font-bold shadow-lg backdrop-blur-md transition active:scale-95 flex items-center gap-1.5';
+        } else {
+          dom.quickCleanViewBtn.className = 'rounded-full bg-slate-900/88 hover:bg-slate-800 text-slate-100 border border-slate-700/85 px-3 py-1.5 text-[11px] font-bold shadow-lg backdrop-blur-md transition active:scale-95 flex items-center gap-1.5';
+        }
+
+        // تحديث أشرطة التمرير وحقول الإدخال الرقمية
+        dom.sidebarTimeBadge.textContent = `t = ${fmt(t)} s`;
+        dom.timeSlider.value = clamp(t, Number(dom.timeSlider.min), Number(dom.timeSlider.max));
+        dom.frameSpeedSlider.value = clamp(v, Number(dom.frameSpeedSlider.min), Number(dom.frameSpeedSlider.max));
+        dom.particleSpeedSlider.value = clamp(ux, Number(dom.particleSpeedSlider.min), Number(dom.particleSpeedSlider.max));
+        dom.particleX0Slider.value = clamp(x0, Number(dom.particleX0Slider.min), Number(dom.particleX0Slider.max));
+        dom.particleYSlider.value = clamp(py, Number(dom.particleYSlider.min), Number(dom.particleYSlider.max));
+        dom.particleZSlider.value = clamp(pz, Number(dom.particleZSlider.min), Number(dom.particleZSlider.max));
+
+        if (syncNumberInputs) {
+          if (document.activeElement !== dom.timeInput) dom.timeInput.value = Number(t.toFixed(4));
+          if (document.activeElement !== dom.frameSpeedInput) dom.frameSpeedInput.value = Number(v.toFixed(4));
+          if (document.activeElement !== dom.particleSpeedInput) dom.particleSpeedInput.value = Number(ux.toFixed(4));
+          if (document.activeElement !== dom.particleX0Input) dom.particleX0Input.value = Number(x0.toFixed(4));
+          if (document.activeElement !== dom.particleYInput) dom.particleYInput.value = Number(py.toFixed(4));
+          if (document.activeElement !== dom.particleZInput) dom.particleZInput.value = Number(pz.toFixed(4));
+        }
+
+        // تحديث شريط HUD العلوي وبطاقة مقارنة السرعة
+        dom.hudUx.innerHTML = `u<sub>x</sub> = ${fmtSigned(ux)} m/s`;
+        dom.hudUxp.innerHTML = `u'<sub>x</sub> = ${fmtSigned(uxSp)} m/s`;
+
+        dom.cardUxVal.textContent = `${fmtSigned(ux)} m/s`;
+        dom.cardUxState.textContent = Math.abs(ux) < 1e-4 ? 'ساكن (uₓ = 0)' : (ux > 0 ? 'متحرك يميناً' : 'متحرك يساراً');
+
+        dom.cardUxpVal.textContent = `${fmtSigned(uxSp)} m/s`;
+        dom.cardUxpState.textContent = Math.abs(uxSp) < 1e-4 ? "ساكن (u'ₓ = 0)" : (uxSp > 0 ? 'متحرك يميناً' : 'متحرك يساراً');
+
+        dom.eqUxLive.innerHTML = `u'<sub>x</sub> = ${fmt(ux)} − (${fmtSigned(v)}) = <span class="text-amber-300 font-bold">${fmtSigned(uxSp)} m/s</span>`;
+
+        // تحديث معادلات الموقع اللحظية
+        dom.eqDxBadge.textContent = `Δx = ${fmt(originSpX)} m`;
+        dom.eqXSLine.innerHTML = `x = ${fmt(x0)} + (${fmt(ux)} × ${fmt(t)}) = <span class="text-sky-400 font-bold">${fmt(xS)} m</span>`;
+        dom.eqXSpLine.innerHTML = `x' = ${fmt(xS)} − (${fmt(v)} × ${fmt(t)}) = <span class="text-amber-400 font-bold">${fmt(xSp)} m</span>`;
+        dom.eqYzLive.textContent = `y'=${fmt(py)} | z'=${fmt(pz)} | t'=${fmt(t)}s`;
+
+        // شارة الحالة السفلية
+        if (Math.abs(t) < 0.04) {
+          dom.statusPill.className = 'absolute bottom-3 right-3 z-20 pointer-events-none rounded-full bg-slate-900/88 border border-amber-400/60 px-3 py-1 text-[11px] font-bold text-amber-200 shadow-lg backdrop-blur-md whitespace-nowrap';
+          dom.statusPill.innerHTML = `تطابق ابتدائي: <span class="ltr-math">t = 0.00 s (O ≡ O')</span>`;
+        } else {
+          dom.statusPill.className = 'absolute bottom-3 right-3 z-20 pointer-events-none rounded-full bg-slate-900/88 border border-cyan-400/50 px-3 py-1 text-[11px] font-bold text-cyan-200 shadow-lg backdrop-blur-md whitespace-nowrap';
+          dom.statusPill.innerHTML = `حركة نسبية: <span class="ltr-math">t = ${fmt(t)} s | Δx = ${fmt(originSpX)} m</span>`;
+        }
+
+        updateProjectedLabels();
+      }
+
+      // ============================================================================
+      // حلقة التحريك الرئيسية (Animation Loop)
+      // ============================================================================
+      function animateLoop(now) {
+        requestAnimationFrame(animateLoop);
+        const dt = Math.min(0.05, (now - lastFrameTime) * 0.001);
+        lastFrameTime = now;
+
+        if (state.isPlaying) {
+          state.t += dt;
+          const sliderMax = Number(dom.timeSlider.max);
+          if (state.t >= sliderMax) {
+            state.t = sliderMax;
+            setPlaying(false);
+          }
+          updateSimulation(true);
+        }
+
+        if (camController) {
+          const xS = state.x0 + state.ux * state.t;
+          if (state.cameraTargetMode === 'pointP') {
+            camController.setBaseFocus({ x: xS, y: state.py, z: state.pz });
+          } else {
+            const focusX = state.perspective === 'frameSp' ? state.v * state.t : 0.0;
+            camController.setBaseFocus({ x: focusX, y: 0.0, z: 0.0 });
+          }
+          camController.update(false);
+          updateAdaptive3DVisuals();
+          updateProjectedLabels();
+        }
+
+        if (renderer && scene && camera) {
+          renderer.render(scene, camera);
+        }
+      }
+
+      // ============================================================================
+      // ربط أحداث عناصر التحكم في الواجهة (حقول الإدخال المباشرة + الأشرطة)
+      // ============================================================================
+      function setPlaying(playing) {
+        state.isPlaying = playing;
+        dom.playPauseText.textContent = playing ? 'إيقاف مؤقت' : 'تشغيل الزمن';
+        dom.playIcon.classList.toggle('hidden', playing);
+        dom.pauseIcon.classList.toggle('hidden', !playing);
+      }
+
+      function bindNumericInput(inputEl, getter, setter, autoFitOnJump = false) {
+        inputEl.addEventListener('input', () => {
+          const parsed = parseFloat(inputEl.value);
+          if (!isNaN(parsed) && isFinite(parsed)) {
+            const prev = getter();
+            setter(parsed);
+            ensureSliderBoundsCoverValues();
+            updateSimulation(false);
+            if (autoFitOnJump && Math.abs(parsed - prev) >= 15) {
+              triggerFitAll();
+            }
+          }
+        });
+
+        const finalize = () => {
+          const parsed = parseFloat(inputEl.value);
+          if (!isNaN(parsed) && isFinite(parsed)) {
+            setter(parsed);
+            ensureSliderBoundsCoverValues();
+          }
+          updateSimulation(true);
+          if (autoFitOnJump) {
+            triggerFitAll();
+          }
+        };
+
+        inputEl.addEventListener('change', finalize);
+        inputEl.addEventListener('blur', finalize);
+        inputEl.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            inputEl.blur();
+          }
+        });
+      }
+
+      function bindUIEvents() {
+        // زر إخفاء/إظهار الشريط الجانبي للتحكم
+        dom.toggleSidebarBtn.addEventListener('click', () => {
+          const isCollapsed = dom.sidebar.classList.toggle('collapsed');
+          dom.appLayout.classList.toggle('sidebar-hidden', isCollapsed);
+          dom.toggleSidebarText.textContent = isCollapsed ? 'إظهار لوحة التحكم' : 'إخفاء لوحة التحكم';
+        });
+
+        // أزرار مضاعف نطاق القياس (Scale Multiplier)
+        dom.scaleBtns.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const mult = Number(btn.dataset.scale);
+            applyScaleMultiplier(mult, true);
+          });
+        });
+
+        // أزرار التأطير الذكي للكاميرا (احتواء الكل / تتبع P / العودة للأصل)
+        dom.sidebarFitAllBtn.addEventListener('click', triggerFitAll);
+        dom.hudFitAllBtn.addEventListener('click', triggerFitAll);
+
+        const handleFocusP = () => {
+          if (camController) camController.focusOnPointP();
+        };
+        dom.sidebarFocusPBtn.addEventListener('click', handleFocusP);
+        dom.hudFocusPBtn.addEventListener('click', handleFocusP);
+
+        const handleResetOrigin = () => {
+          if (camController) camController.resetToOrigin();
+        };
+        dom.sidebarOriginBtn.addEventListener('click', handleResetOrigin);
+        dom.resetCameraBtn.addEventListener('click', handleResetOrigin);
+
+        // شريط وحقل إدخال الزمن + أزرار التشغيل والعودة للتطابق t = 0
+        dom.timeSlider.addEventListener('input', (e) => {
+          state.t = parseFloat(e.target.value);
+          updateSimulation(true);
+        });
+        bindNumericInput(dom.timeInput, () => state.t, (val) => { state.t = val; }, true);
+
+        dom.playPauseBtn.addEventListener('click', () => {
+          if (!state.isPlaying && state.t >= Number(dom.timeSlider.max) - 0.05) {
+            state.t = 0.0;
+          }
+          setPlaying(!state.isPlaying);
+        });
+
+        dom.resetCoincidenceBtn.addEventListener('click', () => {
+          setPlaying(false);
+          state.t = 0.0;
+          updateSimulation(true);
+        });
+
+        // تبديل منظور الراصد (S أو S')
+        dom.perspBtns.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.perspective = btn.dataset.perspective;
+            state.cameraTargetMode = 'observer';
+            dom.perspBtns.forEach((b) => {
+              const active = b.dataset.perspective === state.perspective;
+              if (active) {
+                b.className = 'persp-btn rounded-lg px-3 py-2 text-xs font-bold text-right flex items-center justify-between bg-cyan-500/20 text-cyan-200 border border-cyan-400/50 transition';
+              } else {
+                b.className = 'persp-btn rounded-lg px-3 py-2 text-xs font-bold text-right flex items-center justify-between bg-slate-800/70 hover:bg-slate-800 text-slate-300 border border-slate-700 transition';
+              }
+            });
+            updateSimulation(false);
+          });
+        });
+
+        // سرعة الإطار المتحرك S'
+        dom.frameSpeedSlider.addEventListener('input', (e) => {
+          state.v = parseFloat(e.target.value);
+          updateSimulation(true);
+        });
+        bindNumericInput(dom.frameSpeedInput, () => state.v, (val) => { state.v = val; }, true);
+
+        // سرعة الجسم P وأزرار السكون السريعة
+        dom.particleSpeedSlider.addEventListener('input', (e) => {
+          state.ux = parseFloat(e.target.value);
+          updateSimulation(true);
+        });
+        bindNumericInput(dom.particleSpeedInput, () => state.ux, (val) => { state.ux = val; }, true);
+
+        dom.presetRestSBtn.addEventListener('click', () => {
+          state.ux = 0.0;
+          updateSimulation(true);
+        });
+
+        dom.presetRestSpBtn.addEventListener('click', () => {
+          state.ux = state.v;
+          ensureSliderBoundsCoverValues();
+          updateSimulation(true);
+        });
+
+        // إحداثيات النقطة P (X0, Y, Z) — مع تأطير تلقائي للكاميرا عند كتابة أرقام كبيرة
+        dom.particleX0Slider.addEventListener('input', (e) => {
+          state.x0 = parseFloat(e.target.value);
+          updateSimulation(true);
+        });
+        bindNumericInput(dom.particleX0Input, () => state.x0, (val) => { state.x0 = val; }, true);
+
+        dom.particleYSlider.addEventListener('input', (e) => {
+          state.py = parseFloat(e.target.value);
+          updateSimulation(true);
+        });
+        bindNumericInput(dom.particleYInput, () => state.py, (val) => { state.py = val; }, true);
+
+        dom.particleZSlider.addEventListener('input', (e) => {
+          state.pz = parseFloat(e.target.value);
+          updateSimulation(true);
+        });
+        bindNumericInput(dom.particleZInput, () => state.pz, (val) => { state.pz = val; }, true);
+
+        // إظهار/إخفاء النقطة P ومتجهات السرعة
+        dom.toggleParticleCb.addEventListener('change', (e) => {
+          state.showParticle = e.target.checked;
+          updateSimulation(false);
+        });
+
+        dom.toggleVelVectorsCb.addEventListener('change', (e) => {
+          state.showVelVectors = e.target.checked;
+          updateSimulation(false);
+        });
+
+        // وضع العرض الصافي (إخفاء الأرقام والإحداثيات)
+        dom.hideNumbersCb.addEventListener('change', (e) => {
+          state.hideNumbers = e.target.checked;
+          updateSimulation(false);
+        });
+
+        dom.quickCleanViewBtn.addEventListener('click', () => {
+          state.hideNumbers = !state.hideNumbers;
+          updateSimulation(false);
+        });
+      }
+
+      // تشغيل التطبيق فور اكتمال تحميل الصفحة ومكتبة Three.js
+      window.addEventListener('load', function () {
+        bindUIEvents();
+        window.__threeFallbackPromise.then(function (ThreeLib) {
+          if (!ThreeLib) {
+            dom.webglError.classList.remove('hidden');
+            dom.webglErrorMsg.textContent = 'تعذر تحميل مكتبة Three.js. يرجى التحقق من الاتصال بالإنترنت وإعادة تحميل الصفحة.';
+            return;
+          }
+          initThreeScene();
+        });
+      });
+    })();
+  </script>
+</body>
+            </html>
